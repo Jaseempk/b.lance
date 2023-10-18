@@ -5,3 +5,5 @@ libs = ["lib"]
 remappings=["@openzeppelin/contracts=lib/openzeppelin-contracts/contracts"]
 
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
+[rpc_endpoints]
+goerli = "${SEPOLIA_RPC_URL}"

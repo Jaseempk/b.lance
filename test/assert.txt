@@ -1,0 +1,59 @@
+// Assert the `condition` is true
+function assertTrue(bool condition) internal;
+function assertTrue(bool condition, string memory err) internal;
+
+// Assert `a` is equal to `b`
+function assertEq(address a, address b) internal;
+function assertEq(address a, address b, string memory err) internal;
+function assertEq(bytes32 a, bytes32 b) internal;
+function assertEq(bytes32 a, bytes32 b, string memory err) internal;
+function assertEq(int a, int b) internal;
+function assertEq(int a, int b, string memory err) internal;
+function assertEq(uint a, uint b) internal;
+function assertEq(uint a, uint b, string memory err) internal;
+function assertEqDecimal(int a, int b, uint decimals) internal;
+function assertEq(string memory a, string memory b, string memory err) internal;
+function assertEq32(bytes32 a, bytes32 b) internal;
+function assertEq32(bytes32 a, bytes32 b, string memory err) internal;
+function assertEq0(bytes memory a, bytes memory b) internal;
+function assertEq0(bytes memory a, bytes memory b, string memory err) internal;
+
+// Assert  `a` is greater than `b`
+function assertGt(uint a, uint b) internal;
+function assertGt(uint a, uint b, string memory err) internal;
+function assertGt(int a, int b) internal;
+function assertGt(int a, int b, string memory err) internal;
+function assertGtDecimal(int a, int b, uint decimals) internal;
+function assertGtDecimal(int a, int b, uint decimals, string memory err) internal;
+function assertGtDecimal(uint a, uint b, uint decimals) internal;
+function assertGtDecimal(uint a, uint b, uint decimals, string memory err) internal;
+
+// Assert  `a` is greater than or equal to `b`
+function assertGe(uint a, uint b) internal;
+function assertGe(uint a, uint b, string memory err) internal;
+function assertGe(int a, int b) internal;
+function assertGe(int a, int b, string memory err) internal;
+function assertGeDecimal(int a, int b, uint decimals) internal;
+function assertGeDecimal(int a, int b, uint decimals, string memory err) internal;
+function assertGeDecimal(uint a, uint b, uint decimals) internal;
+function assertGeDecimal(uint a, uint b, uint decimals, string memory err) internal;
+
+// Assert  `a` is lesser than `b`
+function assertLt(uint a, uint b) internal;
+function assertLt(uint a, uint b, string memory err) internal;
+function assertLt(int a, int b) internal;
+function assertLt(int a, int b, string memory err) internal;
+function assertLtDecimal(int a, int b, uint decimals) internal;
+function assertLtDecimal(int a, int b, uint decimals, string memory err) internal;
+function assertLtDecimal(uint a, uint b, uint decimals) internal;
+function assertLtDecimal(uint a, uint b, uint decimals, string memory err) internal;
+
+// Assert  `a` is lesser than or equal to `b`
+function assertLe(uint a, uint b) internal;
+function assertLe(uint a, uint b, string memory err) internal;
+function assertLe(int a, int b) internal;
+function assertLe(int a, int b, string memory err) internal;
+function assertLeDecimal(int a, int b, uint decimals) internal;
+function assertLeDecimal(int a, int b, uint decimals, string memory err) internal;
+function assertLeDecimal(uint a, uint b, uint decimals) internal;
+function assertLeDecimal(uint a, uint b, uint decimals, string memory err) internal;
