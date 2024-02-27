@@ -136,9 +136,9 @@ contract BLance {
         address _freelancer,
         uint _deadline,
         uint _payRate
-    ) public onlyClient {
-        if (Escrow.status != Status.Inactive)
-            revert BLANCE__EscrowAlreadyExists();
+    ) public {
+        // if (Escrow.status != Status.Inactive)
+        //     revert BLANCE__EscrowAlreadyExists();
         if (_client == address(0) || _freelancer == address(0)) {
             revert BLance__ProvideAValidAddress();
         }
@@ -154,15 +154,16 @@ contract BLance {
             block.timestamp + _deadline,
             Status.Active
         );
-        gigDuration[_freelancer] = Escrow.deadline;
+        // gigDuration[_freelancer] = Escrow.deadline;
     }
 
     function acceptGig(
-        bytes32 signature,
+        bytes memory signature,
         bytes32 escrowId
     ) public onlyFreelancer(escrowId) returns (bool) {
         Escrow memory newEscrow = idToEscrow[escrowId];
-        bytes32 hashGig = keccak256(abi.encodePacked(newEscrow));
+        bytes32 hashGig = (keccak256(abi.encode(newEscrow)))
+            .toEthSignedMessageHash();
         address signer = hashGig.recover(signature);
         if (signer != newEscrow.freelancer) revert BLANCE__GigRejected();
         return true;
@@ -171,7 +172,7 @@ contract BLance {
     function escrowDeposited(
         bytes32 escrowId
     ) public payable onlyClient(escrowId) {
-        if (acceptGig != true) revert BLANCE__RejectedGig();
+        // if (acceptGig != true) revert BLANCE__RejectedGig();
         if (idToEscrow[escrowId].escrowAmount > msg.value)
             revert BLANCE_InsufficientDeposit();
         if (idToEscrow[escrowId].status != Status.Active) {
@@ -186,7 +187,8 @@ contract BLance {
         //     _escrowAmount >= Escrow.s_payRate,
         //     "Escrow amount is insufficient"
         // );
-        address(this).balance += idToEscrow[escrowId].escrowAmount;
+        uint256 currentContractBalance = address(this).balance;
+        currentContractBalance += idToEscrow[escrowId].escrowAmount;
         // Escrow.status = Status.Active;
         // gigToFreelancerStatus[_client][Escrow.freelancer] = Escrow.status;
         emit DepositedEscrow(msg.sender, idToEscrow[escrowId].escrowAmount);
@@ -205,56 +207,63 @@ contract BLance {
         idToEscrow[escrowId].escrowAmount = 0;
         idToEscrow[escrowId].status = Status.Inactive;
 
-        if (
-            payable(idToEscrow[escrowId].client).transfer(
-                idToEscrow[escrowId].escrowAmount
-            )
-        ) revert BLANCE__GigCancellationFailed();
+        payable(idToEscrow[escrowId].client).transfer(
+            idToEscrow[escrowId].escrowAmount
+        );
+        // if (
+        // ) revert BLANCE__GigCancellationFailed();
         emit EscrowCancelled(idToEscrow[escrowId].client, msg.sender);
     }
 
     function submitFinishedGig(
         bytes32 escrowId
-    ) external preDeadline onlyFreelancer(escrowId) {
-        if (idToEscrow[escrowId].status = Status.Active)
+    ) external preDeadline(escrowId) onlyFreelancer(escrowId) {
+        if (idToEscrow[escrowId].status != Status.Active)
             revert BLance__EscrowNeedsToBeActive();
 
         emit ProjectSubmitted(msg.sender);
 
-        if (haveDispute) {
-            resolveDispute();
-        } else {
-            releaseFunds();
-        }
+        // if (haveDispute(escrowId)) {
+        //     resolveDispute();
+        // } else {
+        //     releaseFunds();
+        // }
     }
 
-    function releaseFunds() public payable {
+    function releaseFunds(bytes32 escrowId) public payable {
         require(
-            Escrow.status == Status.Completed &&
-                Escrow.status != Status.Dispute,
+            idToEscrow[escrowId].status == Status.Completed &&
+                idToEscrow[escrowId].status != Status.Dispute,
             "Invalid status to release funds"
         );
         require(
-            address(this).balance >= Escrow.escrowAmount,
+            address(this).balance >= idToEscrow[escrowId].escrowAmount,
             "insufficient balance"
         );
 
-        address _freelancer = Escrow.freelancer;
-        address _client = Escrow.client;
+        address _freelancer = idToEscrow[escrowId].freelancer;
+        address _client = idToEscrow[escrowId].client;
 
-        uint256 balance = Escrow.escrowAmount - Escrow.s_payRate;
+        uint256 balance = idToEscrow[escrowId].escrowAmount -
+            idToEscrow[escrowId].s_payRate;
 
-        Escrow.freelancer = address(0);
-        Escrow.client = address(0);
+        idToEscrow[escrowId].freelancer = address(0);
+        idToEscrow[escrowId].client = address(0);
 
         require(_freelancer != address(0), "invalid address");
 
-        require(_freelancer.send(Escrow.s_payRate), "Escrowpayment failed");
+        require(
+            payable(_freelancer).send(idToEscrow[escrowId].s_payRate),
+            "Escrowpayment failed"
+        );
         if (balance > 0 && _client != address(0)) {
-            _client.transfer(balance);
+            payable(_client).transfer(balance);
         }
 
-        emit EscrowPaymentReleased(Escrow.freelancer, Escrow.s_payRate);
+        emit EscrowPaymentReleased(
+            idToEscrow[escrowId].freelancer,
+            idToEscrow[escrowId].s_payRate
+        );
     }
 
     function resolveDispute(bytes32 escrowId) public onlyMediator {
