@@ -8,4 +8,3 @@ remappings=["@openzeppelin/contracts=lib/openzeppelin-contracts/contracts"]
 [rpc_endpoints]
 goerli = "${SEPOLIA_RPC_URL}"
 
-remappings=["@openzeppelin/contracts=lib/openzeppelin-contracts/contracts"]

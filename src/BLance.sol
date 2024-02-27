@@ -37,17 +37,20 @@ library Escrow {
 error BLANCE__NoUnAuthorisedAccess();
 error BLance__ProvideAValidAddress();
 error BLance__OnlyClientCanAccess();
-error BLANCE__OnlyFreelancerHaveAccess()
+error BLANCE__OnlyFreelancerHaveAccess();
 error BLANCE__EscrowAlreadyExists();
 error BLance__EscrowNeedsToBeActive();
 error BLANCE__GigRejected();
 error BLANCE__RejectedGig();
+error BLANCE_InsufficientDeposit();
+error BLANCE__InsufficientEscrowBalance();
 error BLance__OnlyClientCanDepositEscrow();
+error BLANCE__GigCancellationFailed();
 error BLance__DelayedSubmissionNotPermissible();
 error BLance__OnlymediatorCanResolveDispute();
 error BLance__OnlyClientCanRaiseDispute();
 
-contract BLance is ECDSA {
+contract BLance {
     using ECDSA for bytes32;
     //enum
     enum Status {
@@ -90,14 +93,15 @@ contract BLance is ECDSA {
     );
 
     //modifiers
-    modifier onlyClientNFreelancer() {
-        if (msg.sender != Escrow.client || msg.sender != Escrow.freelancer)
-            revert BLANCE__NoUnAuthorisedAccess();
+    // modifier onlyClientNFreelancer() {
+    //     if (msg.sender != Escrow.client || msg.sender != Escrow.freelancer)
+    //         revert BLANCE__NoUnAuthorisedAccess();
 
-        _;
-    }
-    modifier onlyFreelancer(bytes32 escrowId){
-        if(msg.sender!=idToEscrow[escrowId].freelancer)revert BLANCE__OnlyFreelancerHaveAccess();
+    //     _;
+    // }
+    modifier onlyFreelancer(bytes32 escrowId) {
+        if (msg.sender != idToEscrow[escrowId].freelancer)
+            revert BLANCE__OnlyFreelancerHaveAccess();
         _;
     }
     modifier onlyClient(bytes32 escrowId) {
@@ -106,8 +110,8 @@ contract BLance is ECDSA {
         }
         _;
     }
-    modifier preDeadline() {
-        if (block.timestamp <= Escrow.deadline) {
+    modifier preDeadline(bytes32 escrowId) {
+        if (block.timestamp <= idToEscrow[escrowId].deadline) {
             revert BLance__DelayedSubmissionNotPermissible();
         }
         _;
@@ -122,7 +126,7 @@ contract BLance is ECDSA {
     //constructor
     constructor() {
         i_owner = msg.sender;
-        Escrow.status = Status.Inactive;
+        Status initialStatus = Status.Inactive;
     }
 
     //functions
@@ -152,71 +156,70 @@ contract BLance is ECDSA {
         );
         gigDuration[_freelancer] = Escrow.deadline;
     }
-    function acceptGig(bytes32 signature,bytes32 escrowId)public onlyFreelancer(escrowId) returns(bool){
-        Escrow newEscrow=idToEscrow[escrowId];
-        bytes32 hashGig=keccak256(abi.encodePacked(newEscrow));
-        address signer=hashGig.recover(signature);
-        if(signer!=newEscrow.freelancer)revert BLANCE__GigRejected();
+
+    function acceptGig(
+        bytes32 signature,
+        bytes32 escrowId
+    ) public onlyFreelancer(escrowId) returns (bool) {
+        Escrow memory newEscrow = idToEscrow[escrowId];
+        bytes32 hashGig = keccak256(abi.encodePacked(newEscrow));
+        address signer = hashGig.recover(signature);
+        if (signer != newEscrow.freelancer) revert BLANCE__GigRejected();
         return true;
     }
 
     function escrowDeposited(
-        address _client,
-        uint _escrowAmount,
         bytes32 escrowId
     ) public payable onlyClient(escrowId) {
-        if(acceptGig!=true) revert BLANCE__RejectedGig();
-        if (Escrow.status != Status.Active) {
+        if (acceptGig != true) revert BLANCE__RejectedGig();
+        if (idToEscrow[escrowId].escrowAmount > msg.value)
+            revert BLANCE_InsufficientDeposit();
+        if (idToEscrow[escrowId].status != Status.Active) {
             revert BLance__EscrowNeedsToBeActive();
         }
-        if (msg.sender != _client) {
+        if (msg.sender != idToEscrow[escrowId].client) {
             revert BLance__OnlyClientCanDepositEscrow();
         }
-        Escrow.escrowAmount = _escrowAmount;
-        require(
-            _escrowAmount >= Escrow.s_payRate,
-            "Escrow amount is insufficient"
-        );
-        address(this).balance += _escrowAmount;
-        Escrow.status = Status.Active;
-        gigToFreelancerStatus[_client][Escrow.freelancer] = Escrow.status;
-        emit DepositedEscrow(_client, _escrowAmount);
+        // Escrow thisEscrow = idToEscrow[escrowId];
+        // Escrow.escrowAmount = _escrowAmount;
+        // require(
+        //     _escrowAmount >= Escrow.s_payRate,
+        //     "Escrow amount is insufficient"
+        // );
+        address(this).balance += idToEscrow[escrowId].escrowAmount;
+        // Escrow.status = Status.Active;
+        // gigToFreelancerStatus[_client][Escrow.freelancer] = Escrow.status;
+        emit DepositedEscrow(msg.sender, idToEscrow[escrowId].escrowAmount);
     }
 
     function cancelContract(
-        address _client,
-        address _freelancer
-    ) public payable {
-        require(Escrow.status == Status.Active, "Escrow needs to be active");
-        require(
-            address(this).balance >= Escrow.escrowAmount,
-            "Insufficient fund in the escrow contract"
-        );
-        gigToFreelancerStatus[_client][_freelancer] = Status.Agree;
+        bytes32 escrowId
+    ) public payable onlyFreelancer(escrowId) {
+        if (idToEscrow[escrowId].status == Status.Active)
+            revert BLance__EscrowNeedsToBeActive();
+        if (address(this).balance >= idToEscrow[escrowId].escrowAmount)
+            revert BLANCE__InsufficientEscrowBalance();
+        // gigToFreelancerStatus[_client][_freelancer] = Status.Agree;
 
-        uint amountToRefund = Escrow.escrowAmount;
-        Escrow.escrowAmount = 0;
-        Escrow.status = Status.Inactive;
-        gigToFreelancerStatus[_client][_freelancer] = Escrow.status;
+        uint amountToRefund = idToEscrow[escrowId].escrowAmount;
+        idToEscrow[escrowId].escrowAmount = 0;
+        idToEscrow[escrowId].status = Status.Inactive;
 
-        require(
-            payable(Escrow.client).transfer(Escrow.escrowAmount),
-            "Unable to refund"
-        );
-        emit EscrowCancelled(_client, _freelancer);
+        if (
+            payable(idToEscrow[escrowId].client).transfer(
+                idToEscrow[escrowId].escrowAmount
+            )
+        ) revert BLANCE__GigCancellationFailed();
+        emit EscrowCancelled(idToEscrow[escrowId].client, msg.sender);
     }
 
     function submitFinishedGig(
-        address _freelancer,
-        address _client
-    ) external preDeadline {
-        require(
-            gigToFreelancerStatus[_client][_freelancer] = Status.Active,
-            "Escrow not active"
-        );
-        require(msg.sender == _freelancer, "Only freelancer have access");
+        bytes32 escrowId
+    ) external preDeadline onlyFreelancer(escrowId) {
+        if (idToEscrow[escrowId].status = Status.Active)
+            revert BLance__EscrowNeedsToBeActive();
 
-        emit ProjectSubmitted(_freelancer);
+        emit ProjectSubmitted(msg.sender);
 
         if (haveDispute) {
             resolveDispute();
@@ -254,26 +257,21 @@ contract BLance is ECDSA {
         emit EscrowPaymentReleased(Escrow.freelancer, Escrow.s_payRate);
     }
 
-    function resolveDispute() public onlyMediator {
+    function resolveDispute(bytes32 escrowId) public onlyMediator {
         require(
-            gigToFreelancerStatus[Escrow.client][Escrow.freelancer] ==
-                Status.Dispute,
+            idToEscrow[escrowId].status == Status.Dispute,
             "No dispute raised"
         );
     }
 
-    function haveDispute() internal returns (Status) {
+    function haveDispute(
+        bytes32 escrowId
+    ) internal onlyClient(escrowId) returns (Status) {
         require(
-            gigToFreelancerStatus[Escrow.client][Escrow.freelancer] ==
-                Status.Completed
+            idToEscrow[escrowId].status == Status.Completed,
+            "Gig is yet to be submitted"
         );
-        if (msg.sender != Escrow.client) {
-            revert BLance__OnlyClientCanRaiseDispute();
-        }
-        Escrow.status = Status.Dispute;
-        return
-            gigToFreelancerStatus[msg.sender][Escrow.freelancer] = Escrow
-                .status;
-        //resolveDispute();
+
+        return idToEscrow[escrowId].status = Status.Dispute;
     }
 }
