@@ -47,6 +47,8 @@ error BLANCE__InsufficientEscrowBalance();
 error BLance__OnlyClientCanDepositEscrow();
 error BLANCE__GigCancellationFailed();
 error BLance__DelayedSubmissionNotPermissible();
+error BLANCE__FundReleaseStillOnQueue();
+error BLANCE__InvalidReleaseStatus();
 error BLance__OnlymediatorCanResolveDispute();
 error BLance__OnlyClientCanRaiseDispute();
 
@@ -76,6 +78,7 @@ contract BLance {
     //state variables
     address public immutable i_owner;
     address private immutable i_mediator;
+    uint256 public releaseQueuePeriod;
     uint64 nonce;
 
     //Mapping
@@ -126,7 +129,7 @@ contract BLance {
     //constructor
     constructor() {
         i_owner = msg.sender;
-        Status initialStatus = Status.Inactive;
+        // Status initialStatus = Status.Inactive;
     }
 
     //functions
@@ -160,7 +163,7 @@ contract BLance {
     function acceptGig(
         bytes memory signature,
         bytes32 escrowId
-    ) public onlyFreelancer(escrowId) returns (bool) {
+    ) public view onlyFreelancer(escrowId) returns (bool) {
         Escrow memory newEscrow = idToEscrow[escrowId];
         bytes32 hashGig = (keccak256(abi.encode(newEscrow)))
             .toEthSignedMessageHash();
@@ -207,9 +210,7 @@ contract BLance {
         idToEscrow[escrowId].escrowAmount = 0;
         idToEscrow[escrowId].status = Status.Inactive;
 
-        payable(idToEscrow[escrowId].client).transfer(
-            idToEscrow[escrowId].escrowAmount
-        );
+        payable(idToEscrow[escrowId].client).transfer(amountToRefund);
         // if (
         // ) revert BLANCE__GigCancellationFailed();
         emit EscrowCancelled(idToEscrow[escrowId].client, msg.sender);
@@ -220,6 +221,9 @@ contract BLance {
     ) external preDeadline(escrowId) onlyFreelancer(escrowId) {
         if (idToEscrow[escrowId].status != Status.Active)
             revert BLance__EscrowNeedsToBeActive();
+        releaseQueuePeriod = block.timestamp + 2 days;
+
+        idToEscrow[escrowId].status = Status.Completed;
 
         emit ProjectSubmitted(msg.sender);
 
@@ -231,11 +235,18 @@ contract BLance {
     }
 
     function releaseFunds(bytes32 escrowId) public payable {
-        require(
-            idToEscrow[escrowId].status == Status.Completed &&
-                idToEscrow[escrowId].status != Status.Dispute,
-            "Invalid status to release funds"
-        );
+        if (block.timestamp < releaseQueuePeriod)
+            revert BLANCE__FundReleaseStillOnQueue();
+
+        if (
+            idToEscrow[escrowId].status != Status.Completed &&
+            idToEscrow[escrowId].status == Status.Dispute
+        ) revert BLANCE__InvalidReleaseStatus();
+        // require(
+        //     idToEscrow[escrowId].status == Status.Completed &&
+        //         idToEscrow[escrowId].status != Status.Dispute,
+        //     "Invalid status to release funds"
+        // );
         require(
             address(this).balance >= idToEscrow[escrowId].escrowAmount,
             "insufficient balance"
