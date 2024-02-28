@@ -206,6 +206,8 @@ contract BLance {
         bytes32 escrowId
     ) public payable onlyClient(escrowId) {
         // if (acceptGig != true) revert BLANCE__RejectedGig();
+        // console.log("Caller:", msg.sender);
+        // console.log("Client:", idToEscrow[escrowId].client);
         if (!gigAccepted[escrowId]) revert BLANCE__RejectedGig();
 
         if (idToEscrow[escrowId].escrowAmount > msg.value)
@@ -217,6 +219,7 @@ contract BLance {
         if (msg.sender != idToEscrow[escrowId].client) {
             revert BLANCE__OnlyClientCanDepositEscrow();
         }
+        //
         // Escrow thisEscrow = idToEscrow[escrowId];
         // Escrow.escrowAmount = _escrowAmount;
         // require(

@@ -5,6 +5,7 @@ pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import "forge-std/Test.sol";
+import "forge-std/console.sol";
 import "../../src/BLance.sol";
 
 contract BLanceTest is Test {
@@ -47,11 +48,16 @@ contract BLanceTest is Test {
     function testToCheckEscrow() public {
         vm.prank(client);
         bLance.createEscrow(freelancer, 30 days, 1 ether, 2 ether);
+    }
+
+    function testGigAcceptance() public {
+        testToCheckEscrow();
+
         bytes32 escrowId = bLance.createEscrow(
             freelancer,
             30 days,
-            1 ether,
-            2 ether
+            0.01 ether,
+            0.02 ether
         );
         // Escrow memory newEscrow = bLance.getEscrowDetails(escrowId);
         bytes32 digest = (
@@ -61,6 +67,72 @@ contract BLanceTest is Test {
         bytes memory signature = signSale(digest, freelancerPrivKey);
         vm.prank(freelancer);
         bLance.acceptGig(signature, escrowId);
+    }
+
+    function testForInvalidFreelancer() public {
+        bytes4 customError = bytes4(
+            keccak256("BLANCE__ProvideAValidAddress()")
+        );
+        vm.expectRevert(customError);
+        vm.prank(client);
+        bLance.createEscrow(address(0), 30 days, 1 ether, 2 ether);
+    }
+
+    function testInvalidUserAcceptance() public {
+        testToCheckEscrow();
+
+        bytes32 escrowId = bLance.createEscrow(
+            freelancer,
+            30 days,
+            0.01 ether,
+            0.02 ether
+        );
+        // Escrow memory newEscrow = bLance.getEscrowDetails(escrowId);
+        bytes32 digest = (
+            keccak256(abi.encode(bLance.getEscrowDetails(escrowId)))
+        ).toEthSignedMessageHash();
+
+        bytes memory signature = signSale(digest, freelancerPrivKey);
+        bytes4 customError = bytes4(
+            keccak256("BLANCE__OnlyFreelancerHaveAccess()")
+        );
+
+        vm.expectRevert(customError);
+
+        vm.prank(client);
+        bLance.acceptGig(signature, escrowId);
+    }
+
+    function testEscrowDeposit() public {
+        testToCheckEscrow();
+
+        vm.prank(client);
+        bytes32 escrowId = bLance.createEscrow(
+            freelancer,
+            30 days,
+            0.01 ether,
+            0.02 ether
+        );
+        // Escrow memory newEscrow = bLance.getEscrowDetails(escrowId);
+        bytes32 digest = (
+            keccak256(abi.encode(bLance.getEscrowDetails(escrowId)))
+        ).toEthSignedMessageHash();
+
+        bytes memory signature = signSale(digest, freelancerPrivKey);
+        vm.prank(freelancer);
+        bLance.acceptGig(signature, escrowId);
+
+        // bytes32 escrowId = bLance.createEscrow(
+        //     freelancer,
+        //     30 days,
+        //     1 ether,
+        //     2 ether
+        // );
+        vm.startPrank(client);
+        vm.deal(client, 10 ether);
+        console.log("client:", client);
+        bLance.escrowDeposited{value: 0.03 ether}(escrowId);
+        vm.stopPrank();
     }
 
     function signSale(
