@@ -2,35 +2,80 @@
 
 pragma solidity ^0.8.19;
 
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
 import "forge-std/Test.sol";
 import "../../src/BLance.sol";
 
-contract BLanceTest is Test{
+contract BLanceTest is Test {
+    using ECDSA for bytes32;
 
     BLance bLance;
 
-    address payable freelancer;
-    address payable client;
-    uint256 escrowAmount=40;
-    uint256 minAmount=69;
+    address public freelancer = 0xE6F3889C8EbB361Fa914Ee78fa4e55b1BBed3A96;
+    address public client = makeAddr("client");
+    uint256 escrowAmount = 40;
+    uint256 minAmount = 69;
+    uint256 freelancerPrivKey = vm.envUint("OWNER_PRIVATE_KEY");
+
+    enum Status {
+        Inactive,
+        Active,
+        Agree,
+        Completed,
+        Dispute,
+        Resolved,
+        Released
+    }
+
+    struct Escrow {
+        address client;
+        address freelancer;
+        uint s_payRate;
+        uint escrowAmount;
+        uint256 gigStarted;
+        uint deadline;
+        Status status;
+    }
 
     event EscrowInitiated(address indexed sender, uint256 indexed amount);
 
-    function setUp() public{
-
-
-        bLance= new BLance(client,freelancer);
-        
+    function setUp() public {
+        bLance = new BLance();
     }
-    function testFail_NoMinAmount() public {
-        bLance.escrowDeposit(escrowAmount,minAmount);
+
+    function testToCheckEscrow() public {
+        vm.prank(client);
+        bLance.createEscrow(freelancer, 30 days, 1 ether, 2 ether);
+        bytes32 escrowId = bLance.createEscrow(
+            freelancer,
+            30 days,
+            1 ether,
+            2 ether
+        );
+        // Escrow memory newEscrow = bLance.getEscrowDetails(escrowId);
+        bytes32 digest = (
+            keccak256(abi.encode(bLance.getEscrowDetails(escrowId)))
+        ).toEthSignedMessageHash();
+
+        bytes memory signature = signSale(digest, freelancerPrivKey);
+        vm.prank(freelancer);
+        bLance.acceptGig(signature, escrowId);
     }
+
+    function signSale(
+        bytes32 digest,
+        uint256 privateKey
+    ) internal pure returns (bytes memory) {
+        // Simulate the signing using Foundry's vm.sign, which returns (v, r, s)
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+
+        // Combine v, r, and s components into a single bytes signature
+        return abi.encodePacked(r, s, v);
+    }
+
     function test_expectEmit() public {
-
-        vm.expectEmit(true,true,true,true);
-        emit EscrowInitiated(msg.sender,escrowAmount);
-        
+        vm.expectEmit(true, true, true, true);
+        emit EscrowInitiated(msg.sender, escrowAmount);
     }
-    
-
 }

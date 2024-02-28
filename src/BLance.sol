@@ -26,6 +26,8 @@ pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
+import "forge-std/console.sol";
+
 /**
  * 
 library Escrow {
@@ -80,7 +82,7 @@ contract BLance {
     }
 
     //state variables
-    address public immutable i_owner;
+    // address public immutable i_owner;
     address private immutable i_mediator;
     uint256 public releaseQueuePeriod;
     uint64 public reputationScore;
@@ -95,6 +97,11 @@ contract BLance {
 
     //Events
     event DepositedEscrow(address indexed _client, uint indexed escrowAmount);
+    event GigAccepted(
+        bytes32 _escrowId,
+        bytes _signature,
+        uint256 startingTime
+    );
     event EscrowCancelled(address indexed _client, address indexed _freelancer);
     event ProjectSubmitted(address indexed _freelancer);
     event EscrowPaymentReleased(
@@ -135,36 +142,38 @@ contract BLance {
 
     //constructor
     constructor() {
-        i_owner = msg.sender;
+        // i_owner = msg.sender;
         // Status initialStatus = Status.Inactive;
     }
 
     //functions
 
     function createEscrow(
-        address _client,
         address _freelancer,
         uint _deadline,
-        uint _payRate
-    ) public {
+        uint _payRate,
+        uint _escrowAmount
+    ) public returns (bytes32) {
         // if (Escrow.status != Status.Inactive)
         //     revert BLANCE__EscrowAlreadyExists();
-        if (_client == address(0) || _freelancer == address(0)) {
+        if (_freelancer == address(0)) {
             revert BLANCE__ProvideAValidAddress();
         }
         bytes32 escrowId = keccak256(
-            abi.encodePacked(_client, _freelancer, block.timestamp, nonce)
+            abi.encodePacked(msg.sender, _freelancer, block.timestamp, nonce)
         );
         nonce++;
         idToEscrow[escrowId] = Escrow(
-            _client,
+            msg.sender,
             _freelancer,
             _payRate,
-            0,
+            _escrowAmount,
             0,
             block.timestamp + _deadline,
             Status.Active
         );
+
+        return escrowId;
         // gigDuration[_freelancer] = Escrow.deadline;
     }
 
@@ -173,12 +182,23 @@ contract BLance {
         bytes32 escrowId
     ) public onlyFreelancer(escrowId) returns (bool) {
         Escrow memory newEscrow = idToEscrow[escrowId];
+
         bytes32 hashGig = (keccak256(abi.encode(newEscrow)))
             .toEthSignedMessageHash();
+
         address signer = hashGig.recover(signature);
+        // console.log("Signer:", signer);
+        // console.log("caller:", msg.sender);
+
         if (signer != newEscrow.freelancer) revert BLANCE__GigRejected();
-        onChainReputation[msg.sender] += 100;
+
+        emit GigAccepted(escrowId, signature, block.timestamp);
+
+        if (onChainReputation[msg.sender] == 0) {
+            onChainReputation[msg.sender] += 100;
+        }
         idToEscrow[escrowId].gigStarted = block.timestamp;
+
         return gigAccepted[escrowId] = true;
     }
 
@@ -187,8 +207,10 @@ contract BLance {
     ) public payable onlyClient(escrowId) {
         // if (acceptGig != true) revert BLANCE__RejectedGig();
         if (!gigAccepted[escrowId]) revert BLANCE__RejectedGig();
+
         if (idToEscrow[escrowId].escrowAmount > msg.value)
             revert BLANCE_InsufficientDeposit();
+
         if (idToEscrow[escrowId].status != Status.Active) {
             revert BLANCE__EscrowNeedsToBeActive();
         }
@@ -213,6 +235,7 @@ contract BLance {
     ) public payable onlyFreelancer(escrowId) {
         if (idToEscrow[escrowId].status == Status.Active)
             revert BLANCE__EscrowNeedsToBeActive();
+
         if (address(this).balance >= idToEscrow[escrowId].escrowAmount)
             revert BLANCE__InsufficientEscrowBalance();
         // gigToFreelancerStatus[_client][_freelancer] = Status.Agree;
@@ -246,6 +269,7 @@ contract BLance {
     ) external preDeadline(escrowId) onlyFreelancer(escrowId) {
         if (idToEscrow[escrowId].status != Status.Active)
             revert BLANCE__EscrowNeedsToBeActive();
+
         releaseQueuePeriod = block.timestamp + 2 days;
 
         idToEscrow[escrowId].status = Status.Completed;
@@ -312,5 +336,11 @@ contract BLance {
             revert BLANCE__GigNotCompletedYet();
 
         return idToEscrow[escrowId].status = Status.Dispute;
+    }
+
+    function getEscrowDetails(
+        bytes32 escrowId
+    ) public view returns (Escrow memory) {
+        return idToEscrow[escrowId];
     }
 }
