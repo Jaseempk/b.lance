@@ -35,22 +35,25 @@ library Escrow {
 
 //Errors
 error BLANCE__NoUnAuthorisedAccess();
-error BLance__ProvideAValidAddress();
-error BLance__OnlyClientCanAccess();
+error BLANCE__ProvideAValidAddress();
+error BLANCE__OnlyClientCanAccess();
 error BLANCE__OnlyFreelancerHaveAccess();
 error BLANCE__EscrowAlreadyExists();
-error BLance__EscrowNeedsToBeActive();
+error BLANCE__EscrowNeedsToBeActive();
 error BLANCE__GigRejected();
 error BLANCE__RejectedGig();
 error BLANCE_InsufficientDeposit();
 error BLANCE__InsufficientEscrowBalance();
-error BLance__OnlyClientCanDepositEscrow();
+error BLANCE__OnlyClientCanDepositEscrow();
 error BLANCE__GigCancellationFailed();
-error BLance__DelayedSubmissionNotPermissible();
+error BLANCE__DelayedSubmissionNotPermissible();
 error BLANCE__FundReleaseStillOnQueue();
 error BLANCE__InvalidReleaseStatus();
-error BLance__OnlymediatorCanResolveDispute();
-error BLance__OnlyClientCanRaiseDispute();
+error BLANCE__InsufficientReleaseBalance();
+error BLANCE__GigNotCompletedYet();
+error BLANCE__NoDisputeToResolve();
+error BLANCE__OnlymediatorCanResolveDispute();
+error BLANCE__OnlyClientCanRaiseDispute();
 
 contract BLance {
     using ECDSA for bytes32;
@@ -71,6 +74,7 @@ contract BLance {
         address freelancer;
         uint s_payRate;
         uint escrowAmount;
+        uint256 gigStarted;
         uint deadline;
         Status status;
     }
@@ -79,11 +83,14 @@ contract BLance {
     address public immutable i_owner;
     address private immutable i_mediator;
     uint256 public releaseQueuePeriod;
+    uint64 public reputationScore;
     uint64 nonce;
 
     //Mapping
     mapping(bytes32 => Escrow) public idToEscrow;
     mapping(address => uint) gigDuration;
+    mapping(bytes32 => bool) public gigAccepted;
+    mapping(address => uint256) public onChainReputation;
     // mapping(address => mapping(address => Status)) gigToFreelancerStatus;
 
     //Events
@@ -109,19 +116,19 @@ contract BLance {
     }
     modifier onlyClient(bytes32 escrowId) {
         if (msg.sender != idToEscrow[escrowId].client) {
-            revert BLance__OnlyClientCanAccess();
+            revert BLANCE__OnlyClientCanAccess();
         }
         _;
     }
     modifier preDeadline(bytes32 escrowId) {
         if (block.timestamp <= idToEscrow[escrowId].deadline) {
-            revert BLance__DelayedSubmissionNotPermissible();
+            revert BLANCE__DelayedSubmissionNotPermissible();
         }
         _;
     }
     modifier onlyMediator() {
         if (msg.sender != i_mediator) {
-            revert BLance__OnlymediatorCanResolveDispute();
+            revert BLANCE__OnlymediatorCanResolveDispute();
         }
         _;
     }
@@ -143,7 +150,7 @@ contract BLance {
         // if (Escrow.status != Status.Inactive)
         //     revert BLANCE__EscrowAlreadyExists();
         if (_client == address(0) || _freelancer == address(0)) {
-            revert BLance__ProvideAValidAddress();
+            revert BLANCE__ProvideAValidAddress();
         }
         bytes32 escrowId = keccak256(
             abi.encodePacked(_client, _freelancer, block.timestamp, nonce)
@@ -154,6 +161,7 @@ contract BLance {
             _freelancer,
             _payRate,
             0,
+            0,
             block.timestamp + _deadline,
             Status.Active
         );
@@ -163,26 +171,29 @@ contract BLance {
     function acceptGig(
         bytes memory signature,
         bytes32 escrowId
-    ) public view onlyFreelancer(escrowId) returns (bool) {
+    ) public onlyFreelancer(escrowId) returns (bool) {
         Escrow memory newEscrow = idToEscrow[escrowId];
         bytes32 hashGig = (keccak256(abi.encode(newEscrow)))
             .toEthSignedMessageHash();
         address signer = hashGig.recover(signature);
         if (signer != newEscrow.freelancer) revert BLANCE__GigRejected();
-        return true;
+        onChainReputation[msg.sender] += 100;
+        idToEscrow[escrowId].gigStarted = block.timestamp;
+        return gigAccepted[escrowId] = true;
     }
 
     function escrowDeposited(
         bytes32 escrowId
     ) public payable onlyClient(escrowId) {
         // if (acceptGig != true) revert BLANCE__RejectedGig();
+        if (!gigAccepted[escrowId]) revert BLANCE__RejectedGig();
         if (idToEscrow[escrowId].escrowAmount > msg.value)
             revert BLANCE_InsufficientDeposit();
         if (idToEscrow[escrowId].status != Status.Active) {
-            revert BLance__EscrowNeedsToBeActive();
+            revert BLANCE__EscrowNeedsToBeActive();
         }
         if (msg.sender != idToEscrow[escrowId].client) {
-            revert BLance__OnlyClientCanDepositEscrow();
+            revert BLANCE__OnlyClientCanDepositEscrow();
         }
         // Escrow thisEscrow = idToEscrow[escrowId];
         // Escrow.escrowAmount = _escrowAmount;
@@ -201,26 +212,40 @@ contract BLance {
         bytes32 escrowId
     ) public payable onlyFreelancer(escrowId) {
         if (idToEscrow[escrowId].status == Status.Active)
-            revert BLance__EscrowNeedsToBeActive();
+            revert BLANCE__EscrowNeedsToBeActive();
         if (address(this).balance >= idToEscrow[escrowId].escrowAmount)
             revert BLANCE__InsufficientEscrowBalance();
         // gigToFreelancerStatus[_client][_freelancer] = Status.Agree;
 
+        if ((block.timestamp - idToEscrow[escrowId].gigStarted) >= 4 days) {
+            onChainReputation[msg.sender] -= 10;
+        }
+
         uint amountToRefund = idToEscrow[escrowId].escrowAmount;
+        address _client = idToEscrow[escrowId].client;
+        idToEscrow[escrowId] = Escrow(
+            address(0),
+            address(0),
+            0,
+            0,
+            0,
+            0,
+            Status.Inactive
+        );
         idToEscrow[escrowId].escrowAmount = 0;
         idToEscrow[escrowId].status = Status.Inactive;
 
         payable(idToEscrow[escrowId].client).transfer(amountToRefund);
         // if (
         // ) revert BLANCE__GigCancellationFailed();
-        emit EscrowCancelled(idToEscrow[escrowId].client, msg.sender);
+        emit EscrowCancelled(_client, msg.sender);
     }
 
     function submitFinishedGig(
         bytes32 escrowId
     ) external preDeadline(escrowId) onlyFreelancer(escrowId) {
         if (idToEscrow[escrowId].status != Status.Active)
-            revert BLance__EscrowNeedsToBeActive();
+            revert BLANCE__EscrowNeedsToBeActive();
         releaseQueuePeriod = block.timestamp + 2 days;
 
         idToEscrow[escrowId].status = Status.Completed;
@@ -239,7 +264,7 @@ contract BLance {
             revert BLANCE__FundReleaseStillOnQueue();
 
         if (
-            idToEscrow[escrowId].status != Status.Completed &&
+            idToEscrow[escrowId].status != Status.Completed ||
             idToEscrow[escrowId].status == Status.Dispute
         ) revert BLANCE__InvalidReleaseStatus();
         // require(
@@ -247,10 +272,8 @@ contract BLance {
         //         idToEscrow[escrowId].status != Status.Dispute,
         //     "Invalid status to release funds"
         // );
-        require(
-            address(this).balance >= idToEscrow[escrowId].escrowAmount,
-            "insufficient balance"
-        );
+        if (address(this).balance < idToEscrow[escrowId].escrowAmount)
+            revert BLANCE__InsufficientReleaseBalance();
 
         address _freelancer = idToEscrow[escrowId].freelancer;
         address _client = idToEscrow[escrowId].client;
@@ -277,20 +300,16 @@ contract BLance {
         );
     }
 
-    function resolveDispute(bytes32 escrowId) public onlyMediator {
-        require(
-            idToEscrow[escrowId].status == Status.Dispute,
-            "No dispute raised"
-        );
+    function resolveDispute(bytes32 escrowId) public view onlyMediator {
+        if (idToEscrow[escrowId].status != Status.Dispute)
+            revert BLANCE__NoDisputeToResolve();
     }
 
     function haveDispute(
         bytes32 escrowId
     ) internal onlyClient(escrowId) returns (Status) {
-        require(
-            idToEscrow[escrowId].status == Status.Completed,
-            "Gig is yet to be submitted"
-        );
+        if (idToEscrow[escrowId].status != Status.Completed)
+            revert BLANCE__GigNotCompletedYet();
 
         return idToEscrow[escrowId].status = Status.Dispute;
     }
