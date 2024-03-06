@@ -2,12 +2,12 @@
 // Compatible with OpenZeppelin Contracts ^5.0.0
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/governance/Governor.sol";
-import "@openzeppelin/contracts/governance/extensions/GovernorSettings.sol";
-import "@openzeppelin/contracts/governance/extensions/GovernorCountingSimple.sol";
-import "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
-import "@openzeppelin/contracts/governance/extensions/GovernorVotesQuorumFraction.sol";
-import "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
+import {Governor, IGovernor} from "@openzeppelin/contracts/governance/Governor.sol";
+import {GovernorSettings} from "@openzeppelin/contracts/governance/extensions/GovernorSettings.sol";
+import {GovernorCountingSimple} from "@openzeppelin/contracts/governance/extensions/GovernorCountingSimple.sol";
+import {GovernorVotes, IVotes} from "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
+import {GovernorVotesQuorumFraction} from "@openzeppelin/contracts/governance/extensions/GovernorVotesQuorumFraction.sol";
+import {GovernorTimelockControl, TimelockController} from "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
 
 contract MyDAOGovernor is
     Governor,
@@ -33,7 +33,7 @@ contract MyDAOGovernor is
     function votingDelay()
         public
         view
-        override(Governor, GovernorSettings)
+        override(IGovernor, GovernorSettings)
         returns (uint256)
     {
         return super.votingDelay();
@@ -42,7 +42,7 @@ contract MyDAOGovernor is
     function votingPeriod()
         public
         view
-        override(Governor, GovernorSettings)
+        override(IGovernor, GovernorSettings)
         returns (uint256)
     {
         return super.votingPeriod();
@@ -53,7 +53,7 @@ contract MyDAOGovernor is
     )
         public
         view
-        override(Governor, GovernorVotesQuorumFraction)
+        override(IGovernor, GovernorVotesQuorumFraction)
         returns (uint256)
     {
         return super.quorum(blockNumber);
@@ -70,11 +70,11 @@ contract MyDAOGovernor is
         return super.state(proposalId);
     }
 
-    function proposalNeedsQueuing(
-        uint256 proposalId
-    ) public view override(Governor, GovernorTimelockControl) returns (bool) {
-        return super.proposalNeedsQueuing(proposalId);
-    }
+    // function proposalNeedsQueuing(
+    //     uint256 proposalId
+    // ) public view override(Governor, GovernorTimelockControl) returns (bool) {
+    //     return super.proposalNeedsQueuing(proposalId);
+    // }
 
     function proposalThreshold()
         public
@@ -85,38 +85,38 @@ contract MyDAOGovernor is
         return super.proposalThreshold();
     }
 
-    function _queueOperations(
-        uint256 proposalId,
-        address[] memory targets,
-        uint256[] memory values,
-        bytes[] memory calldatas,
-        bytes32 descriptionHash
-    ) internal override(Governor, GovernorTimelockControl) returns (uint48) {
-        return
-            super._queueOperations(
-                proposalId,
-                targets,
-                values,
-                calldatas,
-                descriptionHash
-            );
-    }
+    // function _queueOperations(
+    //     uint256 proposalId,
+    //     address[] memory targets,
+    //     uint256[] memory values,
+    //     bytes[] memory calldatas,
+    //     bytes32 descriptionHash
+    // ) internal override(Governor, GovernorTimelockControl) returns (uint48) {
+    //     return
+    //         super._queueOperations(
+    //             proposalId,
+    //             targets,
+    //             values,
+    //             calldatas,
+    //             descriptionHash
+    //         );
+    // }
 
-    function _executeOperations(
-        uint256 proposalId,
-        address[] memory targets,
-        uint256[] memory values,
-        bytes[] memory calldatas,
-        bytes32 descriptionHash
-    ) internal override(Governor, GovernorTimelockControl) {
-        super._executeOperations(
-            proposalId,
-            targets,
-            values,
-            calldatas,
-            descriptionHash
-        );
-    }
+    // function _executeOperations(
+    //     uint256 proposalId,
+    //     address[] memory targets,
+    //     uint256[] memory values,
+    //     bytes[] memory calldatas,
+    //     bytes32 descriptionHash
+    // ) internal override(Governor, GovernorTimelockControl) {
+    //     super._executeOperations(
+    //         proposalId,
+    //         targets,
+    //         values,
+    //         calldatas,
+    //         descriptionHash
+    //     );
+    // }
 
     function _cancel(
         address[] memory targets,
@@ -134,5 +134,19 @@ contract MyDAOGovernor is
         returns (address)
     {
         return super._executor();
+    }
+
+    function _execute(
+        uint256 /* proposalId */,
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal view override(GovernorTimelockControl, Governor) {}
+
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view override(Governor, GovernorTimelockControl) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 }
