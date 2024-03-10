@@ -7,10 +7,11 @@ import "../src/BLance.sol";
 
 //
 
-contract MyScript is Script {
-    function run() public {
+contract DeployBlance is Script {
+    function run() public returns (BLance) {
         vm.startBroadcast();
-
+        BLance blance = new BLance();
         vm.stopBroadcast();
+        return blance;
     }
 }
